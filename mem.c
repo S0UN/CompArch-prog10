@@ -60,7 +60,7 @@ void init_allocator() {
 
     // Create the initial free block covering the entire heap.
     free_list = (Block*)heap_base;
-    free_list->size = HEAP_SIZE;
+    free_list->size = HEAP_SIZE - sizeof(Block);
     free_list->is_free = 1;
     free_list->next = NULL;
 }
