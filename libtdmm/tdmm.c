@@ -83,9 +83,57 @@ void* first_fit(size_t size){
 			return split_block(temp, size);
 		}
 		temp = temp->next;
+		
 	}
+	//case where there isnt enough size in existing blocks
 	more_memory(last_block, HEAP_SIZE);
+	return split_block(last_block, HEAP_SIZE);
 }
+
+void* worst_fit(size_t size){
+	Block* temp = free_list;
+	Block* worstBlock = NULL;
+	while(temp->next != NULL){
+		if(temp->is_free == 1 && temp->size > ((size + metadata + 3) & ~3)){
+			if(worstBlock == NULL){
+				worstBlock = temp;
+			}else if(temp->size > worstBlock->size){
+				worstBlock = temp;
+			}
+		}
+		temp = temp->next;
+	}
+	if(worstBlock == NULL){
+	//case where there isnt enough size in existing blocks
+	more_memory(last_block, HEAP_SIZE);
+	return split_block(last_block, HEAP_SIZE);
+	} else{
+			return split_block(worstBlock, size);
+	}
+}
+
+void* best_fit(size_t size){
+	Block* temp = free_list;
+	Block* bestBlock = NULL;
+	while(temp->next != NULL){
+		if(temp->is_free == 1 && temp->size > ((size + metadata + 3) & ~3)){
+			if(bestBlock == NULL){
+				bestBlock = temp;
+			}else if(temp->size < bestBlock->size){
+				bestBlock = temp;
+			}
+		}
+		temp = temp->next;
+	}
+	if(bestBlock == NULL){
+	//case where there isnt enough size in existing blocks
+	more_memory(last_block, HEAP_SIZE);
+	return split_block(last_block, HEAP_SIZE);
+	} else{
+			return split_block(bestBlock, size);
+	}
+}
+
 
 void more_memory(Block* last_block, size_t size){
     size = (size + 3) & ~3;
@@ -110,13 +158,7 @@ void more_memory(Block* last_block, size_t size){
 
 
 }
-void* best_fit(size_t size){
-	
-}
 
-void* worst_fit(size_t size){
-	
-}
 
 
 
