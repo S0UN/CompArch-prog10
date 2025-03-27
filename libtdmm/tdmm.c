@@ -10,7 +10,7 @@
 void* heap_base;
 Block* free_list;
 Block* last_block;
-size_t HEAP_SIZE = 4 * 1024 * 1024;  
+size_t HEAP_SIZE = 8 * 1024 * 1024;  
 alloc_strat_e current_strategy;
 size_t metadata = sizeof(Block);
 
