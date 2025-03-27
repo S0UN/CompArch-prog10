@@ -42,11 +42,11 @@ void* t_malloc(size_t size) {
 
     // Choose allocation strategy.
     if (current_strategy == WORST_FIT) {
-        return first_fit(size);
+        return worst_fit(size);
     } else if (current_strategy == BEST_FIT) {
         return best_fit(size);
     } else {
-        return worst_fit(size);
+        return first_fit(size);
     }
     return NULL; 
 }
