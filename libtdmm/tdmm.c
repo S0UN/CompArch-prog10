@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-
+#define METADATA sizeof(Block)
+#define MIN_BLOCK_SIZE 4   // Minimal free payload size
 
 // Global variables
 void* heap_base;
@@ -12,7 +13,6 @@ Block* free_list;
 Block* last_block;
 size_t HEAP_SIZE = 8 * 1024 * 1024;  
 alloc_strat_e current_strategy;
-size_t metadata = sizeof(Block);
 
 // t_init: initializes the heap with mmap and sets up the free list.
 void t_init(alloc_strat_e strat) {
@@ -29,7 +29,7 @@ void t_init(alloc_strat_e strat) {
 
     // Initialize the free list: the entire heap becomes one free block.
     free_list = (Block*)heap_base;
-    free_list->size = HEAP_SIZE - sizeof(Block); 
+    free_list->size = HEAP_SIZE - METADATA; 
     free_list->is_free = 1;
     free_list->next = NULL;
     free_list->prev = NULL;
@@ -38,90 +38,57 @@ void t_init(alloc_strat_e strat) {
 
 // t_malloc: allocates a block using the chosen strategy.
 void* t_malloc(size_t size) {
+    // Align size to 4 bytes.
     size = (size + 3) & ~3;
 
-    // Choose allocation strategy.
-    if (current_strategy == WORST_FIT) {
-        return worst_fit(size);
+    if (current_strategy == FIRST_FIT) {
+        return first_fit(size);
     } else if (current_strategy == BEST_FIT) {
         return best_fit(size);
-    } else {
-        return first_fit(size);
+    } else if (current_strategy == WORST_FIT) {
+        return worst_fit(size);
     }
     return NULL; 
 }
 
 // split_block: splits a free block if there's enough space to allocate 'size' bytes.
 void* split_block(Block* current, size_t size) {
+    size = (size + 3) & ~3;  // Align the requested size
+
     if (current == NULL) {
         return NULL;
     }
-    size_t aligned_size = (size + 3) & ~3;
-    // Check if there's enough space left in the block to split.
-    if (current->size >= aligned_size + metadata) {
-        Block* new_block = (Block*)((char*)current + aligned_size + metadata);
-        new_block->size = current->size - aligned_size - sizeof(Block);
+    // If current block is large enough to split (leave room for a new block header and minimal payload)
+    if (current->size >= size + METADATA + MIN_BLOCK_SIZE) {
+        Block* new_block = (Block*)((char*)current + METADATA + size);
+        new_block->size = current->size - size - METADATA;
         new_block->is_free = 1;
         new_block->next = current->next;
-        new_block->prev = current; 
-
-        // Update current block: its total size becomes the allocated payload plus metadata.
-        current->size = aligned_size + metadata;
+        new_block->prev = current;
         current->next = new_block;
-
         if (new_block->next == NULL) {
             last_block = new_block;
         }
-        return (char*)current + sizeof(Block); 
+        current->size = size;
     }
     current->is_free = 0;
-    return (char*)current + sizeof(Block);
+    return (char*)current + METADATA;
 }
 
 // first_fit: finds the first free block that fits the requested size.
 void* first_fit(size_t size) {
     Block* temp = free_list;
     while (temp != NULL) {
-        if (temp->is_free && temp->size >= ((size + metadata + 3) & ~3)) {
+        if (temp->is_free && temp->size >= size) {
             return split_block(temp, size);
         }
         temp = temp->next;
     }
-    // If no suitable block, try to extend the heap.   
-    if(HEAP_SIZE > size){
-        more_memory(HEAP_SIZE);
-        return split_block(last_block, HEAP_SIZE);
-    }else{
-        more_memory(size + metadata);
-        return split_block(last_block, size + metadata);
-    }
-
-    
-}
-
-// worst_fit: finds the free block with the largest leftover space.
-void* worst_fit(size_t size) {
-    Block* temp = free_list;
-    Block* worstBlock = NULL;
-    while (temp != NULL) {
-        if (temp->is_free && temp->size >= ((size + metadata + 3) & ~3)) {
-            if (worstBlock == NULL || temp->size > worstBlock->size) {
-                worstBlock = temp;
-            }
-        }
-        temp = temp->next;
-    }
-    if (worstBlock == NULL) {
-    if(HEAP_SIZE > size){
-        more_memory(HEAP_SIZE);
-        return split_block(last_block, HEAP_SIZE);
-    }else{
-        more_memory(size + metadata);
-        return split_block(last_block, size + metadata);
-    }
-    } else {
-        return split_block(worstBlock, size);
-    }
+    // If no suitable block, extend the heap.
+    size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
+                           HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+    more_memory(extend_size);
+    return split_block(last_block, size);
 }
 
 // best_fit: finds the free block with the smallest leftover space.
@@ -129,7 +96,7 @@ void* best_fit(size_t size) {
     Block* temp = free_list;
     Block* bestBlock = NULL;
     while (temp != NULL) {
-        if (temp->is_free && temp->size >= ((size + metadata + 3) & ~3)) {
+        if (temp->is_free && temp->size >= size) {
             if (bestBlock == NULL || temp->size < bestBlock->size) {
                 bestBlock = temp;
             }
@@ -137,16 +104,33 @@ void* best_fit(size_t size) {
         temp = temp->next;
     }
     if (bestBlock == NULL) {
-    if(HEAP_SIZE > size){
-        more_memory(HEAP_SIZE);
-        return split_block(last_block, HEAP_SIZE);
-    }else{
-        more_memory(size + metadata);
-        return split_block(last_block, size + metadata);
+        size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
+                               HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+        more_memory(extend_size);
+        return split_block(last_block, size);
     }
-    } else {
-        return split_block(bestBlock, size);
+    return split_block(bestBlock, size);
+}
+
+// worst_fit: finds the free block with the largest leftover space.
+void* worst_fit(size_t size) {
+    Block* temp = free_list;
+    Block* worstBlock = NULL;
+    while (temp != NULL) {
+        if (temp->is_free && temp->size >= size) {
+            if (worstBlock == NULL || temp->size > worstBlock->size) {
+                worstBlock = temp;
+            }
+        }
+        temp = temp->next;
     }
+    if (worstBlock == NULL) {
+        size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
+                               HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+        more_memory(extend_size);
+        return split_block(last_block, size);
+    }
+    return split_block(worstBlock, size);
 }
 
 // more_memory: requests additional memory from the OS and appends it to the free list.
@@ -159,7 +143,7 @@ void more_memory(size_t size) {
         exit(EXIT_FAILURE);
     }
     Block* new_block = (Block*)new_heap;
-    new_block->size = size - sizeof(Block);
+    new_block->size = size - METADATA;
     new_block->is_free = 1;
     new_block->next = NULL;
     new_block->prev = NULL;
@@ -168,7 +152,6 @@ void more_memory(size_t size) {
         last_block->next = new_block;
         new_block->prev = last_block;
     }
-    // Update global last_block.
     last_block = new_block;
 }
 
@@ -177,14 +160,14 @@ void t_free(void *ptr) {
     if (ptr == NULL) {
         return;
     }
-    // Get the block header by subtracting metadata.
-    Block* currBlock = (Block*)((char*)ptr - sizeof(Block));
+    // Get the block header by subtracting METADATA.
+    Block* currBlock = (Block*)((char*)ptr - METADATA);
     currBlock->is_free = 1;
 
     // Coalesce with next block if possible.
     if (currBlock->next != NULL && currBlock->next->is_free == 1) {
         Block* nextBlock = currBlock->next;
-        currBlock->size += nextBlock->size - metadata;
+        currBlock->size += nextBlock->size + METADATA;
         currBlock->next = nextBlock->next;
         if (nextBlock->next != NULL) {
             nextBlock->next->prev = currBlock;
@@ -195,7 +178,7 @@ void t_free(void *ptr) {
     // Coalesce with previous block if possible.
     if (currBlock->prev != NULL && currBlock->prev->is_free == 1) {
         Block* prevBlock = currBlock->prev;
-        prevBlock->size += currBlock->size - metadata;
+        prevBlock->size += currBlock->size + METADATA;
         prevBlock->next = currBlock->next;
         if (currBlock->next != NULL) {
             currBlock->next->prev = prevBlock;
