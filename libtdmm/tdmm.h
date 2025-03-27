@@ -15,6 +15,12 @@ typedef enum
   BUDDY
 } alloc_strat_e;
 
+typedef struct Block {
+    size_t size;        
+    int is_free;     
+    struct Block* next; 
+    struct Block* prev; 
+} Block;
 /**
  * Initializes the memory allocator with the given strategy.
  * @param strat The strategy to use for memory allocation.
@@ -41,5 +47,13 @@ void t_free (void *ptr);
  * by t_malloc and t_free.
  */
 void t_gcollect (void);
+
+void* split_block(Block* current, size_t size);
+void* first_fit(size_t size);
+void* worst_fit(size_t size);
+void* best_fit(size_t size);
+void more_memory(size_t size);
+
+
 
 #endif // TDMM_H_

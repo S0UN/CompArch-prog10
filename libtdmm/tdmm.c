@@ -4,13 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// Define the Block structure first
-typedef struct Block {
-    size_t size;        
-    int is_free;     
-    struct Block* next; 
-    struct Block* prev; 
-} Block;
+
 
 // Global variables
 void* heap_base;
@@ -94,7 +88,7 @@ void* first_fit(size_t size) {
         temp = temp->next;
     }
     // If no suitable block, try to extend the heap.
-    more_memory(last_block, HEAP_SIZE);
+    more_memory( HEAP_SIZE);
     return split_block(last_block, HEAP_SIZE);
 }
 
@@ -111,7 +105,7 @@ void* worst_fit(size_t size) {
         temp = temp->next;
     }
     if (worstBlock == NULL) {
-        more_memory(last_block, HEAP_SIZE);
+        more_memory( HEAP_SIZE);
         return split_block(last_block, HEAP_SIZE);
     } else {
         return split_block(worstBlock, size);
@@ -131,7 +125,7 @@ void* best_fit(size_t size) {
         temp = temp->next;
     }
     if (bestBlock == NULL) {
-        more_memory(last_block, HEAP_SIZE);
+        more_memory( HEAP_SIZE);
         return split_block(last_block, HEAP_SIZE);
     } else {
         return split_block(bestBlock, size);
@@ -139,7 +133,7 @@ void* best_fit(size_t size) {
 }
 
 // more_memory: requests additional memory from the OS and appends it to the free list.
-void more_memory(Block* last_block, size_t size) {
+void more_memory( size_t size) {
     size = (size + 3) & ~3;
     void* new_heap = mmap(NULL, size, PROT_READ | PROT_WRITE,
                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -196,4 +190,5 @@ void t_free(void *ptr) {
 
 // t_gcollect: Basic garbage collection (not implemented yet)
 void t_gcollect(void) {
+    // TODO: Implement garbage collection if needed.
 }
