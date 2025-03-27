@@ -87,9 +87,16 @@ void* first_fit(size_t size) {
         }
         temp = temp->next;
     }
-    // If no suitable block, try to extend the heap.
-    more_memory( HEAP_SIZE);
-    return split_block(last_block, HEAP_SIZE);
+    // If no suitable block, try to extend the heap.   
+    if(HEAP_SIZE > size){
+        more_memory(HEAP_SIZE);
+        return split_block(last_block, HEAP_SIZE);
+    }else{
+        more_memory(size + metadata);
+        return split_block(last_block, size + metadata);
+    }
+
+    
 }
 
 // worst_fit: finds the free block with the largest leftover space.
@@ -105,8 +112,13 @@ void* worst_fit(size_t size) {
         temp = temp->next;
     }
     if (worstBlock == NULL) {
-        more_memory( HEAP_SIZE);
+    if(HEAP_SIZE > size){
+        more_memory(HEAP_SIZE);
         return split_block(last_block, HEAP_SIZE);
+    }else{
+        more_memory(size + metadata);
+        return split_block(last_block, size + metadata);
+    }
     } else {
         return split_block(worstBlock, size);
     }
@@ -125,15 +137,20 @@ void* best_fit(size_t size) {
         temp = temp->next;
     }
     if (bestBlock == NULL) {
-        more_memory( HEAP_SIZE);
+    if(HEAP_SIZE > size){
+        more_memory(HEAP_SIZE);
         return split_block(last_block, HEAP_SIZE);
+    }else{
+        more_memory(size + metadata);
+        return split_block(last_block, size + metadata);
+    }
     } else {
         return split_block(bestBlock, size);
     }
 }
 
 // more_memory: requests additional memory from the OS and appends it to the free list.
-void more_memory( size_t size) {
+void more_memory(size_t size) {
     size = (size + 3) & ~3;
     void* new_heap = mmap(NULL, size, PROT_READ | PROT_WRITE,
                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
