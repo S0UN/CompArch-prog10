@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #define METADATA sizeof(Block)
-#define MIN_BLOCK_SIZE 4   
+#define MIN_BLOCK_SIZE 4   // Minimal free payload size
 
 // Global variables
 void* heap_base;
@@ -45,7 +45,7 @@ void* t_malloc(size_t size) {
         return first_fit(size);
     } else if (current_strategy == BEST_FIT) {
         return best_fit(size);
-    } else (current_strategy == WORST_FIT) {
+    } else  {
         return worst_fit(size);
     }
     return NULL; 
