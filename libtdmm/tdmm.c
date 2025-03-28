@@ -162,8 +162,9 @@ void t_free(void *ptr) {
     Block* currBlock = (Block*)((char*)ptr - METADATA);
     currBlock->is_free = 1;
 
-    // Coalesce with next block if possible.
-    if (currBlock->next != NULL && currBlock->next->is_free == 1) {
+    // Coalesce with next block if possible and adjacent in memory.
+    if (currBlock->next != NULL && currBlock->next->is_free == 1 &&
+        (char*)currBlock + METADATA + currBlock->size == (char*)currBlock->next) {
         Block* nextBlock = currBlock->next;
         currBlock->size += nextBlock->size + METADATA;
         currBlock->next = nextBlock->next;
@@ -173,8 +174,9 @@ void t_free(void *ptr) {
             last_block = currBlock;
         }
     }
-    // Coalesce with previous block if possible.
-    if (currBlock->prev != NULL && currBlock->prev->is_free == 1) {
+    // Coalesce with previous block if possible and adjacent in memory.
+    if (currBlock->prev != NULL && currBlock->prev->is_free == 1 &&
+        (char*)currBlock->prev + METADATA + currBlock->prev->size == (char*)currBlock) {
         Block* prevBlock = currBlock->prev;
         prevBlock->size += currBlock->size + METADATA;
         prevBlock->next = currBlock->next;
