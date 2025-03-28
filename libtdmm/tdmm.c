@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #define METADATA sizeof(Block)
-#define MIN_BLOCK_SIZE 4   // Minimal free payload size
+#define MIN_BLOCK_SIZE 4   
 
 // Global variables
 void* heap_base;
@@ -51,14 +51,12 @@ void* t_malloc(size_t size) {
     return NULL; 
 }
 
-// split_block: splits a free block if there's enough space to allocate 'size' bytes.
 void* split_block(Block* current, size_t size) {
     size = (size + 3) & ~3;  // Align the requested size
 
     if (current == NULL) {
         return NULL;
     }
-    // If current block is large enough to split (leave room for a new block header and minimal payload)
     if (current->size >= size + METADATA + MIN_BLOCK_SIZE) {
         Block* new_block = (Block*)((char*)current + METADATA + size);
         new_block->size = current->size - size - METADATA;
@@ -66,7 +64,9 @@ void* split_block(Block* current, size_t size) {
         new_block->next = current->next;
         new_block->prev = current;
         current->next = new_block;
-        if (new_block->next == NULL) {
+        if (new_block->next != NULL) {
+            new_block->next->prev = new_block;  // Added to maintain list consistency
+        } else {
             last_block = new_block;
         }
         current->size = size;
@@ -74,7 +74,6 @@ void* split_block(Block* current, size_t size) {
     current->is_free = 0;
     return (char*)current + METADATA;
 }
-
 // first_fit: finds the first free block that fits the requested size.
 void* first_fit(size_t size) {
     Block* temp = free_list;
