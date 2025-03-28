@@ -65,7 +65,7 @@ void* split_block(Block* current, size_t size) {
         new_block->prev = current;
         current->next = new_block;
         if (new_block->next != NULL) {
-            new_block->next->prev = new_block;  // Added to maintain list consistency
+            new_block->next->prev = new_block; 
         } else {
             last_block = new_block;
         }
