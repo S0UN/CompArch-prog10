@@ -38,7 +38,6 @@ void t_init(alloc_strat_e strat) {
 
 // t_malloc: allocates a block using the chosen strategy.
 void* t_malloc(size_t size) {
-    // Align size to 4 bytes.
     size = (size + 3) & ~3;
 
     if (current_strategy == FIRST_FIT) {
@@ -52,7 +51,7 @@ void* t_malloc(size_t size) {
 }
 
 void* split_block(Block* current, size_t size) {
-    size = (size + 3) & ~3;  // Align the requested size
+    size = (size + 3) & ~3;  
 
     if (current == NULL) {
         return NULL;
