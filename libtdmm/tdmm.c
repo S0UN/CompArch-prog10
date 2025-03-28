@@ -158,11 +158,9 @@ void t_free(void *ptr) {
     if (ptr == NULL) {
         return;
     }
-    // Get the block header by subtracting METADATA.
     Block* currBlock = (Block*)((char*)ptr - METADATA);
     currBlock->is_free = 1;
 
-    // Coalesce with next block if possible and adjacent in memory.
     if (currBlock->next != NULL && currBlock->next->is_free == 1 &&
         (char*)currBlock + METADATA + currBlock->size == (char*)currBlock->next) {
         Block* nextBlock = currBlock->next;
