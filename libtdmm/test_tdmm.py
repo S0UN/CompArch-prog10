@@ -22,18 +22,22 @@ lib.t_free.argtypes = [ctypes.c_void_p]
 lib.t_free.restype = None
 
 # Allocation strategies
-FIRST_FIT, BEST_FIT, WORST_FIT = 0, 1, 2
-STRATEGIES = {"First Fit": FIRST_FIT, "Best Fit": BEST_FIT, "Worst Fit": WORST_FIT}
+FIRST_FIT, BEST_FIT, WORST_FIT, SEQUENTIAL, RANDOM = 0, 1, 2, 3, 4
+STRATEGIES = {
+    "First Fit": FIRST_FIT,
+    "Best Fit": BEST_FIT,
+    "Worst Fit": WORST_FIT,
+    "Sequential": SEQUENTIAL,
+    "Random": RANDOM
+}
 
 # Test parameters
-METADATA = 16  # Size of Block struct
+METADATA = 16
 REPEATS = 1
 NUM_TEST_CASES = 1000
-TOTAL_OPS = 1000
-NUM_MALLOCS = 550
-NUM_FREES = 450
+NUM_TEST_CASES_HIGH_CONCURRENCY = 200  # Reduced for HighConcurrency
 
-def run_test(strategy, sizes):
+def run_test(strategy, sizes, total_ops, num_mallocs, num_frees):
     lib.t_init(strategy)
     pointers = []
     alloc_times = []
@@ -43,7 +47,7 @@ def run_test(strategy, sizes):
     total_requested = 4096 * 4
     peak_overhead = 0
 
-    operations = ['malloc'] * NUM_MALLOCS + ['free'] * NUM_FREES
+    operations = ['malloc'] * num_mallocs + ['free'] * num_frees
     np.random.shuffle(operations)
 
     start_time = time.perf_counter()
@@ -88,35 +92,52 @@ def run_test(strategy, sizes):
         "overhead": peak_overhead
     }
 
-# Generate test cases
-TEST_CASES = {
-    "ExtremeLargeAllocations": {
-        "sizes": [2**i for i in range(20, 28)],  # 1MB to 256MB
-        "num_ops": 200,
-        "free_prob": 0.3,
-    },
-    "HighConcurrencySmall": {
-        "sizes": [i for i in range(16, 513)],  # 16–512 bytes
-        "num_ops": 20000,
-        "free_prob": 0.1,
-    },
-    "FragmentationNightmare": {
-        "sizes": [16, 256, 4096, 65536],
-        "num_ops": 20000,
-        "free_prob": 0.5,
-    },
-}
-
+# Test cases
 size_options = [
-    [i for i in range(1, 257)],         
-    [2**i for i in range(20, 24)],        
-    [2**i for i in range(0, 24, 2)],    
-    [16, 1048576],                        
-    [2**i for i in range(0, 24)]       
+    [i for i in range(1, 257)],           # Small: 1-256 bytes
+    [2**i for i in range(20, 24)],        # Large: 1MB-8MB
+    [2**i for i in range(0, 24, 2)],      # Mixed: 1 byte to 8MB stepped
+    [16, 1048576],                        # Fragmentation: 16 bytes or 1MB
+    [2**i for i in range(0, 24)]          # Full range: 1 byte to 8MB
 ]
+
+TEST_CASES = {}
+# Standard benchmark: 550 mallocs, 450 frees
 for i in range(NUM_TEST_CASES):
     size_range = random.choice(size_options)
-    TEST_CASES[f"Test_{i:04d}"] = {"sizes": size_range}
+    TEST_CASES[f"Standard_{i:04d}"] = {
+        "sizes": size_range,
+        "total_ops": 1000,
+        "num_mallocs": 550,
+        "num_frees": 450
+    }
+
+# ExtremeLargeAllocations: 200 ops, free_prob=0.3 → 140 mallocs, 60 frees
+for i in range(NUM_TEST_CASES):
+    TEST_CASES[f"ExtremeLarge_{i:04d}"] = {
+        "sizes": [2**i for i in range(20, 28)],  # 1MB to 256MB
+        "total_ops": 200,
+        "num_mallocs": 140,
+        "num_frees": 60
+    }
+
+# HighConcurrencySmall: 2000 ops, free_prob=0.1 → 1800 mallocs, 200 frees
+for i in range(NUM_TEST_CASES_HIGH_CONCURRENCY):
+    TEST_CASES[f"HighConcurrency_{i:04d}"] = {
+        "sizes": [i for i in range(16, 513)],  # 16–512 bytes
+        "total_ops": 2000,
+        "num_mallocs": 1800,
+        "num_frees": 200
+    }
+
+# FragmentationNightmare: 20000 ops, free_prob=0.5 → 10000 mallocs, 10000 frees
+for i in range(NUM_TEST_CASES):
+    TEST_CASES[f"Fragmentation_{i:04d}"] = {
+        "sizes": [16, 256, 4096, 65536],
+        "total_ops": 20000,
+        "num_mallocs": 10000,
+        "num_frees": 10000
+    }
 
 # Run tests
 results = {}
@@ -128,7 +149,7 @@ for test_name, params in TEST_CASES.items():
         avg_results = {"avg_utilization": 0, "total_time": 0, "alloc_times": [], "free_times": [], "overhead": 0}
         util_time = []
         for _ in range(REPEATS):
-            res = run_test(strat, params["sizes"])
+            res = run_test(strat, params["sizes"], params["total_ops"], params["num_mallocs"], params["num_frees"])
             avg_results["avg_utilization"] += res["avg_utilization"] / REPEATS
             avg_results["total_time"] += res["total_time"] / REPEATS
             avg_results["alloc_times"].extend(res["alloc_times"])
@@ -140,83 +161,88 @@ for test_name, params in TEST_CASES.items():
         results[test_name][strat_name] = avg_results
         results[test_name][strat_name]["utilization_over_time"] = util_time
 
-# Aggregate results
-agg_results = {strat: {"avg_utilization": [], "total_time": [], "alloc_times": [], "free_times": [], "overhead": []}
-               for strat in STRATEGIES}
+# Aggregate results by benchmark type
+benchmarks = ["Standard", "ExtremeLarge", "HighConcurrency", "Fragmentation"]
+agg_results = {bench: {strat: {"avg_utilization": [], "total_time": [], "alloc_times": [], "free_times": [], "overhead": []}
+                       for strat in STRATEGIES}
+               for bench in benchmarks}
+
 for test_name in TEST_CASES:
+    bench_type = test_name.split("_")[0]
     for strat_name in STRATEGIES:
         res = results[test_name][strat_name]
-        agg_results[strat_name]["avg_utilization"].append(res["avg_utilization"])
-        agg_results[strat_name]["total_time"].append(res["total_time"])
-        agg_results[strat_name]["alloc_times"].extend(res["alloc_times"])
-        agg_results[strat_name]["free_times"].extend(res["free_times"])
-        agg_results[strat_name]["overhead"].append(res["overhead"])
+        agg_results[bench_type][strat_name]["avg_utilization"].append(res["avg_utilization"])
+        agg_results[bench_type][strat_name]["total_time"].append(res["total_time"])
+        agg_results[bench_type][strat_name]["alloc_times"].extend(res["alloc_times"])
+        agg_results[bench_type][strat_name]["free_times"].extend(res["free_times"])
+        agg_results[bench_type][strat_name]["overhead"].append(res["overhead"])
 
-# Plotting
-plt.figure(figsize=(15, 10))
-plt.suptitle(f"Aggregated Results Across {NUM_TEST_CASES} Test Cases (550 Mallocs, 450 Frees)")
+# Plotting for each benchmark
+for bench in benchmarks:
+    plt.figure(figsize=(15, 10))
+    plt.suptitle(f"{bench} Benchmark Results ({len([k for k in TEST_CASES if k.startswith(bench)])} Test Cases)")
 
-# 1. %age memory utilization on average
-plt.subplot(2, 3, 1)
-plt.boxplot([agg_results[strat]["avg_utilization"] for strat in STRATEGIES], labels=STRATEGIES.keys())
-plt.title("Avg Memory Utilization (%)")
-plt.ylabel("%")
+    plt.subplot(2, 3, 1)
+    plt.boxplot([agg_results[bench][strat]["avg_utilization"] for strat in STRATEGIES], labels=STRATEGIES.keys())
+    plt.title("Avg Memory Utilization (%)")
+    plt.ylabel("%")
+    plt.xticks(rotation=45)
 
-# 2. %age memory utilization as a function of time (sample)
-plt.subplot(2, 3, 2)
-test_name = "Test_0000"
-for name in STRATEGIES:
-    times, utils = zip(*results[test_name][name]["utilization_over_time"])
-    plt.plot(times, [u * 100 for u in utils], label=name)
-plt.title(f"Utilization Over Time (Sample: {test_name})")
-plt.xlabel("Time (s)")
-plt.ylabel("%")
-plt.legend()
+    plt.subplot(2, 3, 2)
+    test_name = f"{bench}_0000"
+    for name in STRATEGIES:
+        times, utils = zip(*results[test_name][name]["utilization_over_time"])
+        plt.plot(times, [u * 100 for u in utils], label=name)
+    plt.title(f"Utilization Over Time (Sample: {test_name})")
+    plt.xlabel("Time (s)")
+    plt.ylabel("%")
+    plt.legend()
 
-# 3. Overall speed
-plt.subplot(2, 3, 3)
-plt.boxplot([agg_results[strat]["total_time"] for strat in STRATEGIES], labels=STRATEGIES.keys())
-plt.title("Overall Speed")
-plt.ylabel("Time (s)")
+    plt.subplot(2, 3, 3)
+    plt.boxplot([agg_results[bench][strat]["total_time"] for strat in STRATEGIES], labels=STRATEGIES.keys())
+    plt.title("Overall Speed")
+    plt.ylabel("Time (s)")
+    plt.xticks(rotation=45)
 
-# 4. Speeds of t_malloc() and t_free() vs size
-plt.subplot(2, 3, 4)
-for name in STRATEGIES:
-    sizes, times = zip(*agg_results[name]["alloc_times"])
-    plt.loglog(sizes, times, '.', label=name, alpha=0.5)
-plt.title("t_malloc Speed vs Size")
-plt.xlabel("Size (bytes)")
-plt.ylabel("Time (s)")
-plt.legend()
+    plt.subplot(2, 3, 4)
+    for name in STRATEGIES:
+        sizes, times = zip(*agg_results[bench][name]["alloc_times"])
+        plt.loglog(sizes, times, '.', label=name, alpha=0.5)
+    plt.title("t_malloc Speed vs Size")
+    plt.xlabel("Size (bytes)")
+    plt.ylabel("Time (s)")
+    plt.legend()
 
-plt.subplot(2, 3, 5)
-for name in STRATEGIES:
-    sizes, times = zip(*agg_results[name]["free_times"])
-    plt.loglog(sizes, times, '.', label=name, alpha=0.5)
-plt.title("t_free Speed vs Size")
-plt.xlabel("Size (bytes)")
-plt.ylabel("Time (s)")
-plt.legend()
+    plt.subplot(2, 3, 5)
+    for name in STRATEGIES:
+        sizes, times = zip(*agg_results[bench][name]["free_times"])
+        plt.loglog(sizes, times, '.', label=name, alpha=0.5)
+    plt.title("t_free Speed vs Size")
+    plt.xlabel("Size (bytes)")
+    plt.ylabel("Time (s)")
+    plt.legend()
 
-# 5. Overhead
-plt.subplot(2, 3, 6)
-plt.boxplot([agg_results[strat]["overhead"] for strat in STRATEGIES], labels=STRATEGIES.keys())
-plt.title("Peak Overhead (%)")
-plt.ylabel("%")
+    plt.subplot(2, 3, 6)
+    plt.boxplot([agg_results[bench][strat]["overhead"] for strat in STRATEGIES], labels=STRATEGIES.keys())
+    plt.title("Peak Overhead (%)")
+    plt.ylabel("%")
+    plt.xticks(rotation=45)
 
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-plt.savefig("aggregated_results.png")
-plt.close()
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(f"{bench}_results.png")
+    plt.close()
 
 # Print results
 print(f"\nTotal Test Cases Run: {total_test_cases}")
-for strat_name in STRATEGIES:
-    print(f"\n=== Aggregated Results for {strat_name} ===")
-    print(f"  Avg Utilization: {np.mean(agg_results[strat_name]['avg_utilization']):.2f}% "
-          f"(± {np.std(agg_results[strat_name]['avg_utilization']):.2f}%)")
-    print(f"  Total Time: {np.mean(agg_results[strat_name]['total_time']):.2f}s "
-          f"(± {np.std(agg_results[strat_name]['total_time']):.2f}s)")
-    print(f"  Avg t_malloc Time: {np.mean([t for _, t in agg_results[strat_name]['alloc_times']]):.6f}s")
-    print(f"  Avg t_free Time: {np.mean([t for _, t in agg_results[strat_name]['free_times']]):.6f}s")
-    print(f"  Overhead: {np.mean(agg_results[strat_name]['overhead']):.2f}% "
-          f"(± {np.std(agg_results[strat_name]['overhead']):.2f}%)")
+for bench in benchmarks:
+    print(f"\n=== {bench} Benchmark ===")
+    for strat_name in STRATEGIES:
+        print(f"\n{strat_name}:")
+        print(f"  Avg Utilization: {np.mean(agg_results[bench][strat_name]['avg_utilization']):.2f}% "
+              f"(± {np.std(agg_results[bench][strat_name]['avg_utilization']):.2f}%)")
+        print(f"  Total Time: {np.mean(agg_results[bench][strat_name]['total_time']):.2f}s "
+              f"(± {np.std(agg_results[bench][strat_name]['total_time']):.4f}s)")
+        print(f"  Avg t_malloc Time: {np.mean([t for _, t in agg_results[bench][strat_name]['alloc_times']]):.6f}s")
+        print(f"  Avg t_free Time: {np.mean([t for _, t in agg_results[bench][strat_name]['free_times']]):.6f}s")
+        print(f"  Overhead: {np.mean(agg_results[bench][strat_name]['overhead']):.2f}% "
+              f"(± {np.std(agg_results[bench][strat_name]['overhead']):.2f}%)")

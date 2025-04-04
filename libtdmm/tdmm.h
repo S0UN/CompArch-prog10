@@ -9,17 +9,19 @@
 
 typedef enum
 {
-  FIRST_FIT,
-  BEST_FIT,
-  WORST_FIT,
-  BUDDY
+	FIRST_FIT,
+	BEST_FIT,
+	WORST_FIT,
+	SEQUENTIAL,
+	RANDOM,
+	BUDDY
 } alloc_strat_e;
 
 typedef struct Block {
-    size_t size;        
-    int is_free;     
-    struct Block* next; 
-    struct Block* prev; 
+		size_t size;        
+		int is_free;     
+		struct Block* next; 
+		struct Block* prev; 
 } Block;
 /**
  * Initializes the memory allocator with the given strategy.
@@ -53,6 +55,13 @@ void* first_fit(size_t size);
 void* worst_fit(size_t size);
 void* best_fit(size_t size);
 void more_memory(size_t size);
+void* round_robin(size_t size);
+void* random_fit(size_t size);
+enum RoundRobin{
+	FIRST,
+	SECOND,
+	THIRD
+};
 
 
 

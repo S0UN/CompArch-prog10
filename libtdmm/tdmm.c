@@ -3,16 +3,18 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 #define METADATA sizeof(Block)
-#define MIN_BLOCK_SIZE 4   
+#define MIN_BLOCK_SIZE 4
 
 // Global variables
 void* heap_base;
 Block* free_list;
 Block* last_block;
-size_t HEAP_SIZE = 4096 * 4;  
+size_t HEAP_SIZE = 4096 * 4;
 alloc_strat_e current_strategy;
+enum RoundRobin round = FIRST;
 
 // t_init: initializes the heap with mmap and sets up the free list.
 void t_init(alloc_strat_e strat) {
@@ -26,14 +28,16 @@ void t_init(alloc_strat_e strat) {
     }
 
     current_strategy = strat;
+    srand(time(NULL));  
 
     // Initialize the free list: the entire heap becomes one free block.
     free_list = (Block*)heap_base;
-    free_list->size = HEAP_SIZE - METADATA; 
+    free_list->size = HEAP_SIZE - METADATA;
     free_list->is_free = 1;
     free_list->next = NULL;
     free_list->prev = NULL;
     last_block = free_list;
+    round = FIRST; 
 }
 
 // t_malloc: allocates a block using the chosen strategy.
@@ -44,14 +48,18 @@ void* t_malloc(size_t size) {
         return first_fit(size);
     } else if (current_strategy == BEST_FIT) {
         return best_fit(size);
-    } else  {
+    } else if (current_strategy == WORST_FIT) {
         return worst_fit(size);
+    } else if (current_strategy == SEQUENTIAL) {
+        return round_robin(size);
+    } else if (current_strategy == RANDOM) {
+        return random_fit(size);
     }
-    return NULL; 
+    return NULL;
 }
 
 void* split_block(Block* current, size_t size) {
-    size = (size + 3) & ~3;  
+    size = (size + 3) & ~3;
 
     if (current == NULL) {
         return NULL;
@@ -64,7 +72,7 @@ void* split_block(Block* current, size_t size) {
         new_block->prev = current;
         current->next = new_block;
         if (new_block->next != NULL) {
-            new_block->next->prev = new_block; 
+            new_block->next->prev = new_block;
         } else {
             last_block = new_block;
         }
@@ -73,6 +81,31 @@ void* split_block(Block* current, size_t size) {
     current->is_free = 0;
     return (char*)current + METADATA;
 }
+
+void* round_robin(size_t size) {
+    if (round == FIRST) {
+        round = SECOND;
+        return first_fit(size);
+    } else if (round == SECOND) {
+        round = THIRD;
+        return best_fit(size);
+    } else {  
+        round = FIRST;
+        return worst_fit(size);
+    }
+}
+
+void* random_fit(size_t size) {
+    int random_number = rand() % 3; 
+    if (random_number == 0) {
+        return first_fit(size);
+    } else if (random_number == 1) {
+        return best_fit(size);
+    } else {  
+        return worst_fit(size);
+    }
+}
+
 // first_fit: finds the first free block that fits the requested size.
 void* first_fit(size_t size) {
     Block* temp = free_list;
@@ -82,9 +115,8 @@ void* first_fit(size_t size) {
         }
         temp = temp->next;
     }
-    // If no suitable block, extend the heap.
     size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
-                           HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+                         HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
     more_memory(extend_size);
     return split_block(last_block, size);
 }
@@ -103,7 +135,7 @@ void* best_fit(size_t size) {
     }
     if (bestBlock == NULL) {
         size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
-                               HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+                             HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
         more_memory(extend_size);
         return split_block(last_block, size);
     }
@@ -124,7 +156,7 @@ void* worst_fit(size_t size) {
     }
     if (worstBlock == NULL) {
         size_t extend_size = (HEAP_SIZE > (size + METADATA + MIN_BLOCK_SIZE)) ?
-                               HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
+                             HEAP_SIZE : (size + METADATA + MIN_BLOCK_SIZE);
         more_memory(extend_size);
         return split_block(last_block, size);
     }
@@ -172,7 +204,6 @@ void t_free(void *ptr) {
             last_block = currBlock;
         }
     }
-    // Coalesce with previous block if possible and adjacent in memory.
     if (currBlock->prev != NULL && currBlock->prev->is_free == 1 &&
         (char*)currBlock->prev + METADATA + currBlock->prev->size == (char*)currBlock) {
         Block* prevBlock = currBlock->prev;
